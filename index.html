@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Black-Scholes · Trader Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@300;400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:     #09090b;
+  --s1:     #0f0f12;
+  --s2:     #141418;
+  --s3:     #1a1a20;
+  --border: #222228;
+  --border2:#2a2a34;
+  --text:   #f0f0f5;
+  --muted:  #52526a;
+  --dim:    #2a2a38;
+  --call:   #00ff88;
+  --put:    #ff4466;
+  --vol1:   #00c8ff;
+  --vol2:   #ffaa00;
+  --vol3:   #ff44aa;
+  --yellow: #ffe566;
+  --mono:   'JetBrains Mono', monospace;
+  --display:'Bebas Neue', sans-serif;
+  --sans:   'Outfit', sans-serif;
+}
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; background:var(--bg); color:var(--text); font-family:var(--sans); overflow-x:hidden; }
+
+/* GRID BACKGROUND */
+body::before {
+  content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background-image:
+    linear-gradient(rgba(0,255,136,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,255,136,.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* HEADER */
+header {
+  position:sticky; top:0; z-index:200;
+  background:rgba(9,9,11,.92); backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--border2);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 24px; height:50px;
+}
+.logo {
+  display:flex; align-items:baseline; gap:10px;
+}
+.logo-main {
+  font-family:var(--display); font-size:1.4rem; letter-spacing:3px; color:#fff;
+  line-height:1;
+}
+.logo-main span { color:var(--call); }
+.logo-tag {
+  font-family:var(--mono); font-size:.5rem; color:var(--muted);
+  letter-spacing:2px; text-transform:uppercase;
+}
+.header-right { display:flex; align-items:center; gap:12px; }
+
+/* OPTION TYPE TOGGLE */
+.toggle-wrap {
+  display:flex; background:var(--s3); border:1px solid var(--border2); border-radius:4px; overflow:hidden;
+}
+.toggle-btn {
+  padding:5px 16px; font-family:var(--mono); font-size:.6rem; font-weight:600;
+  letter-spacing:1.5px; text-transform:uppercase; cursor:pointer;
+  border:none; background:transparent; color:var(--muted); transition:all .15s;
+}
+.toggle-btn.active-call { background:rgba(0,255,136,.12); color:var(--call); }
+.toggle-btn.active-put  { background:rgba(255,68,102,.12); color:var(--put); }
+
+.ts { font-family:var(--mono); font-size:.55rem; color:var(--muted); }
+
+/* LAYOUT */
+.app { display:grid; grid-template-columns:300px 1fr; height:calc(100vh - 50px); position:relative; z-index:1; }
+
+/* CONTROLS PANEL */
+.controls {
+  background:var(--s1); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden;
+}
+.controls::-webkit-scrollbar { width:3px; }
+.controls::-webkit-scrollbar-thumb { background:var(--border2); }
+
+.ctrl-section {
+  padding:16px; border-bottom:1px solid var(--border);
+}
+.ctrl-title {
+  font-family:var(--mono); font-size:.52rem; color:var(--muted);
+  letter-spacing:2px; text-transform:uppercase; margin-bottom:12px;
+}
+
+/* SLIDERS */
+.slider-row { margin-bottom:14px; }
+.slider-label {
+  display:flex; justify-content:space-between; align-items:baseline;
+  margin-bottom:5px;
+}
+.slider-name { font-size:.72rem; font-weight:600; color:var(--text); }
+.slider-val {
+  font-family:var(--mono); font-size:.7rem; font-weight:600;
+  color:var(--call); min-width:60px; text-align:right;
+}
+.slider-val.put-color { color:var(--put); }
+input[type=range] {
+  width:100%; height:3px; appearance:none; background:var(--dim);
+  border-radius:2px; outline:none; cursor:pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  appearance:none; width:13px; height:13px; border-radius:50%;
+  background:var(--call); cursor:pointer; transition:transform .1s;
+  box-shadow:0 0 8px rgba(0,255,136,.4);
+}
+input[type=range].put-slider::-webkit-slider-thumb { background:var(--put); box-shadow:0 0 8px rgba(255,68,102,.4); }
+input[type=range]::-webkit-slider-thumb:hover { transform:scale(1.3); }
+.slider-bounds { display:flex; justify-content:space-between; margin-top:2px; }
+.slider-bounds span { font-family:var(--mono); font-size:.48rem; color:var(--muted); }
+
+/* GREEKS DISPLAY */
+.greeks-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.greek-card {
+  background:var(--s2); border:1px solid var(--border); border-radius:4px;
+  padding:10px 12px; transition:border-color .2s;
+}
+.greek-card:hover { border-color:var(--border2); }
+.greek-name { font-family:var(--mono); font-size:.52rem; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-bottom:4px; }
+.greek-val { font-size:1rem; font-weight:700; font-family:var(--mono); line-height:1; }
+.greek-desc { font-size:.55rem; color:var(--muted); margin-top:3px; line-height:1.4; }
+
+/* PRICE DISPLAY */
+.price-display {
+  background:var(--s2); border:1px solid var(--border2); border-radius:4px;
+  padding:14px; text-align:center; margin-bottom:10px;
+}
+.price-label { font-family:var(--mono); font-size:.52rem; color:var(--muted); letter-spacing:2px; text-transform:uppercase; margin-bottom:4px; }
+.price-val { font-family:var(--display); font-size:2.2rem; letter-spacing:2px; line-height:1; }
+.price-val.call { color:var(--call); }
+.price-val.put  { color:var(--put); }
+.price-meta { font-family:var(--mono); font-size:.58rem; color:var(--muted); margin-top:4px; }
+
+/* PARITY CHECK */
+.parity-row {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:8px 10px; background:var(--s3); border-radius:3px; margin-top:8px;
+}
+.parity-label { font-family:var(--mono); font-size:.54rem; color:var(--muted); }
+.parity-val { font-family:var(--mono); font-size:.6rem; font-weight:600; color:var(--yellow); }
+
+/* MAIN CHARTS AREA */
+.charts-area {
+  display:grid;
+  grid-template-rows:1fr 1fr;
+  grid-template-columns:1fr 1fr;
+  gap:1px; background:var(--border); overflow:hidden;
+}
+.chart-panel { background:var(--s1); display:flex; flex-direction:column; min-height:0; }
+.chart-header {
+  padding:10px 14px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between; flex-shrink:0;
+  background:var(--s2);
+}
+.chart-title { font-family:var(--mono); font-size:.58rem; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--text); }
+.chart-meta  { font-family:var(--mono); font-size:.5rem; color:var(--muted); }
+.chart-body  { flex:1; padding:12px; min-height:0; position:relative; }
+.chart-body canvas { max-height:100% !important; }
+
+/* SCENARIO BADGES */
+.scenario-legend {
+  display:flex; gap:10px; align-items:center;
+}
+.sc-badge {
+  display:flex; align-items:center; gap:4px;
+  font-family:var(--mono); font-size:.5rem; color:var(--muted);
+}
+.sc-dot { width:6px; height:6px; border-radius:50%; }
+
+@media(max-width:900px) {
+  .app { grid-template-columns:1fr; grid-template-rows:auto 1fr; }
+  .controls { max-height:50vh; }
+  .charts-area { grid-template-columns:1fr; grid-template-rows:repeat(4,280px); }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-main">BLACK<span>·</span>SCHOLES</div>
+    <div class="logo-tag">Trader Dashboard · European Options</div>
+  </div>
+  <div class="header-right">
+    <div class="toggle-wrap">
+      <button class="toggle-btn active-call" id="btn-call" onclick="setType('call')">CALL</button>
+      <button class="toggle-btn" id="btn-put" onclick="setType('put')">PUT</button>
+    </div>
+    <div class="ts" id="ts"></div>
+  </div>
+</header>
+
+<div class="app">
+
+  <!-- CONTROLS -->
+  <div class="controls">
+
+    <!-- PRICE OUTPUT -->
+    <div class="ctrl-section">
+      <div class="ctrl-title">Option Price</div>
+      <div class="price-display">
+        <div class="price-label">Theoretical Price</div>
+        <div class="price-val call" id="price-display">—</div>
+        <div class="price-meta" id="price-meta">—</div>
+      </div>
+      <div class="parity-row">
+        <span class="parity-label">Put-Call Parity · C−P</span>
+        <span class="parity-val" id="parity-val">—</span>
+      </div>
+      <div class="parity-row" style="margin-top:4px">
+        <span class="parity-label">Breakeven at expiry</span>
+        <span class="parity-val" id="be-val">—</span>
+      </div>
+    </div>
+
+    <!-- SLIDERS -->
+    <div class="ctrl-section">
+      <div class="ctrl-title">Parameters</div>
+
+      <div class="slider-row">
+        <div class="slider-label">
+          <span class="slider-name">S · Spot Price</span>
+          <span class="slider-val" id="val-S">$562</span>
+        </div>
+        <input type="range" id="sl-S" min="300" max="800" step="1" value="562" oninput="update()">
+        <div class="slider-bounds"><span>$300</span><span>$800</span></div>
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-label">
+          <span class="slider-name">K · Strike Price</span>
+          <span class="slider-val" id="val-K">$562</span>
+        </div>
+        <input type="range" id="sl-K" min="300" max="800" step="1" value="562" oninput="update()">
+        <div class="slider-bounds"><span>$300</span><span>$800</span></div>
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-label">
+          <span class="slider-name">T · Days to Expiry</span>
+          <span class="slider-val" id="val-T">30d</span>
+        </div>
+        <input type="range" id="sl-T" min="1" max="365" step="1" value="30" oninput="update()">
+        <div class="slider-bounds"><span>1d</span><span>365d</span></div>
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-label">
+          <span class="slider-name">σ · Implied Vol</span>
+          <span class="slider-val" id="val-sigma">28%</span>
+        </div>
+        <input type="range" id="sl-sigma" min="1" max="100" step="0.5" value="28" oninput="update()">
+        <div class="slider-bounds"><span>1%</span><span>100%</span></div>
+      </div>
+
+      <div class="slider-row" style="margin-bottom:0">
+        <div class="slider-label">
+          <span class="slider-name">r · Risk-Free Rate</span>
+          <span class="slider-val" id="val-r">4.3%</span>
+        </div>
+        <input type="range" id="sl-r" min="0" max="10" step="0.1" value="4.3" oninput="update()">
+        <div class="slider-bounds"><span>0%</span><span>10%</span></div>
+      </div>
+    </div>
+
+    <!-- GREEKS -->
+    <div class="ctrl-section">
+      <div class="ctrl-title">Greeks</div>
+      <div class="greeks-grid">
+        <div class="greek-card">
+          <div class="greek-name">Delta Δ</div>
+          <div class="greek-val" id="g-delta">—</div>
+          <div class="greek-desc">Shares to hedge 1 contract</div>
+        </div>
+        <div class="greek-card">
+          <div class="greek-name">Gamma Γ</div>
+          <div class="greek-val" id="g-gamma">—</div>
+          <div class="greek-desc">Delta change per $1</div>
+        </div>
+        <div class="greek-card">
+          <div class="greek-name">Vega ν</div>
+          <div class="greek-val" id="g-vega">—</div>
+          <div class="greek-desc">P&L per 1% vol move</div>
+        </div>
+        <div class="greek-card">
+          <div class="greek-name">Theta Θ</div>
+          <div class="greek-val" id="g-theta">—</div>
+          <div class="greek-desc">P&L per calendar day</div>
+        </div>
+        <div class="greek-card">
+          <div class="greek-name">Rho ρ</div>
+          <div class="greek-val" id="g-rho">—</div>
+          <div class="greek-desc">P&L per 1% rate move</div>
+        </div>
+        <div class="greek-card">
+          <div class="greek-name">IV Check</div>
+          <div class="greek-val" id="g-moneyness">—</div>
+          <div class="greek-desc">Moneyness (S/K)</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CHARTS -->
+  <div class="charts-area">
+
+    <!-- P&L DIAGRAM -->
+    <div class="chart-panel">
+      <div class="chart-header">
+        <div class="chart-title">P&L · Spot Range</div>
+        <div class="chart-meta">Today vs At Expiry</div>
+      </div>
+      <div class="chart-body"><canvas id="pnlChart"></canvas></div>
+    </div>
+
+    <!-- GREEKS PROFILE -->
+    <div class="chart-panel">
+      <div class="chart-header">
+        <div class="chart-title">Greeks Profile · Spot</div>
+        <div class="chart-meta">Δ · Γ · ν across spot range</div>
+      </div>
+      <div class="chart-body"><canvas id="greeksChart"></canvas></div>
+    </div>
+
+    <!-- THETA DECAY -->
+    <div class="chart-panel">
+      <div class="chart-header">
+        <div class="chart-title">Theta Decay</div>
+        <div class="chart-meta">ATM · ITM · OTM over time</div>
+      </div>
+      <div class="chart-body"><canvas id="decayChart"></canvas></div>
+    </div>
+
+    <!-- VOL SCENARIO -->
+    <div class="chart-panel">
+      <div class="chart-header">
+        <div class="chart-title">Vol Scenario Comparison</div>
+        <div class="scenario-legend">
+          <div class="sc-badge"><div class="sc-dot" style="background:var(--vol1)"></div><span id="sc1-label">σ−10%</span></div>
+          <div class="sc-badge"><div class="sc-dot" style="background:var(--call)"></div><span>Current σ</span></div>
+          <div class="sc-badge"><div class="sc-dot" style="background:var(--vol2)"></div><span id="sc2-label">σ+10%</span></div>
+          <div class="sc-badge"><div class="sc-dot" style="background:var(--vol3)"></div><span id="sc3-label">σ+20%</span></div>
+        </div>
+      </div>
+      <div class="chart-body"><canvas id="scenChart"></canvas></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════
+   BLACK-SCHOLES ENGINE — pure JS implementation
+   Same math as the Python notebook
+══════════════════════════════════════════════════════ */
+
+// Cumulative normal distribution (Abramowitz & Stegun approximation)
+function normCDF(x) {
+  const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x);
+  const t = 1 / (1 + p * x);
+  const y = 1 - (((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
+  return 0.5 * (1 + sign * y);
+}
+
+// Standard normal PDF
+function normPDF(x) { return Math.exp(-0.5*x*x) / Math.sqrt(2*Math.PI); }
+
+// Core Black-Scholes computation
+function bs(S, K, T, r, sigma, type) {
+  if (T <= 0) {
+    const intrinsic = type === 'call' ? Math.max(S-K,0) : Math.max(K-S,0);
+    return { price:intrinsic, delta:type==='call'?(S>K?1:0):(S<K?-1:0), gamma:0, vega:0, theta:0, rho:0, d1:0, d2:0 };
+  }
+  const d1 = (Math.log(S/K) + (r + 0.5*sigma*sigma)*T) / (sigma*Math.sqrt(T));
+  const d2 = d1 - sigma*Math.sqrt(T);
+  let price, delta, rho;
+
+  if (type === 'call') {
+    price = S*normCDF(d1) - K*Math.exp(-r*T)*normCDF(d2);
+    delta = normCDF(d1);
+    rho   = K*T*Math.exp(-r*T)*normCDF(d2) / 100;
+  } else {
+    price = K*Math.exp(-r*T)*normCDF(-d2) - S*normCDF(-d1);
+    delta = normCDF(d1) - 1;
+    rho   = -K*T*Math.exp(-r*T)*normCDF(-d2) / 100;
+  }
+
+  const gamma = normPDF(d1) / (S*sigma*Math.sqrt(T));
+  const vega  = S*normPDF(d1)*Math.sqrt(T) / 100;
+  const term1 = -(S*normPDF(d1)*sigma) / (2*Math.sqrt(T));
+  const term2 = r*K*Math.exp(-r*T);
+  const theta = type === 'call'
+    ? (term1 - term2*normCDF(d2)) / 365
+    : (term1 + term2*normCDF(-d2)) / 365;
+
+  return { price, delta, gamma, vega, theta, rho, d1, d2 };
+}
+
+/* ══════════ STATE ══════════════════════════════════ */
+let optionType = 'call';
+
+function getParams() {
+  return {
+    S:     parseFloat(document.getElementById('sl-S').value),
+    K:     parseFloat(document.getElementById('sl-K').value),
+    T:     parseFloat(document.getElementById('sl-T').value) / 365,
+    r:     parseFloat(document.getElementById('sl-r').value) / 100,
+    sigma: parseFloat(document.getElementById('sl-sigma').value) / 100,
+  };
+}
+
+function setType(type) {
+  optionType = type;
+  document.getElementById('btn-call').className = 'toggle-btn' + (type==='call'?' active-call':'');
+  document.getElementById('btn-put').className  = 'toggle-btn' + (type==='put'?' active-put':'');
+
+  // Update slider thumb colors
+  const sliders = document.querySelectorAll('input[type=range]');
+  sliders.forEach(s => {
+    s.classList.toggle('put-slider', type === 'put');
+  });
+  document.querySelectorAll('.slider-val').forEach(v => {
+    v.classList.toggle('put-color', type === 'put');
+  });
+
+  update();
+}
+
+/* ══════════ CHARTS INIT ════════════════════════════ */
+Chart.defaults.color = '#52526a';
+Chart.defaults.font.family = "'JetBrains Mono', monospace";
+Chart.defaults.font.size = 9;
+
+const chartOpts = (yLabel='') => ({
+  responsive: true, maintainAspectRatio: false,
+  animation: { duration: 120 },
+  plugins: {
+    legend: { display: true, labels: { boxWidth: 8, padding: 10, font:{size:9} } },
+    tooltip: { backgroundColor:'#0f0f12', borderColor:'#2a2a34', borderWidth:1 }
+  },
+  scales: {
+    x: { grid:{color:'rgba(42,42,52,.6)'}, border:{color:'#222228'}, ticks:{maxTicksLimit:7} },
+    y: { grid:{color:'rgba(42,42,52,.6)'}, border:{color:'#222228'},
+         title:{display:!!yLabel, text:yLabel, color:'#52526a'} }
+  }
+});
+
+const pnlChart    = new Chart(document.getElementById('pnlChart'),    {type:'line', data:{labels:[],datasets:[]}, options:chartOpts('P&L ($)')});
+const greeksChart = new Chart(document.getElementById('greeksChart'), {type:'line', data:{labels:[],datasets:[]}, options:chartOpts()});
+const decayChart  = new Chart(document.getElementById('decayChart'),  {type:'line', data:{labels:[],datasets:[]}, options:chartOpts('Price ($)')});
+const scenChart   = new Chart(document.getElementById('scenChart'),   {type:'line', data:{labels:[],datasets:[]}, options:chartOpts('Price ($)')});
+
+/* ══════════ UPDATE ═════════════════════════════════ */
+function update() {
+  const {S,K,T,r,sigma} = getParams();
+  const type = optionType;
+  const result = bs(S, K, T, r, sigma, type);
+  const TDays  = Math.round(T*365);
+  const accentColor = type === 'call' ? getComputedStyle(document.documentElement).getPropertyValue('--call').trim()
+                                      : getComputedStyle(document.documentElement).getPropertyValue('--put').trim();
+
+  // ── SLIDER LABELS ────────────────────────────────
+  document.getElementById('val-S').textContent     = `$${S}`;
+  document.getElementById('val-K').textContent     = `$${K}`;
+  document.getElementById('val-T').textContent     = `${TDays}d`;
+  document.getElementById('val-sigma').textContent = `${parseFloat(document.getElementById('sl-sigma').value)}%`;
+  document.getElementById('val-r').textContent     = `${parseFloat(document.getElementById('sl-r').value)}%`;
+
+  // ── PRICE ─────────────────────────────────────────
+  const priceEl = document.getElementById('price-display');
+  priceEl.textContent = `$${result.price.toFixed(4)}`;
+  priceEl.className = `price-val ${type}`;
+
+  const moneyness = S > K ? 'ITM' : S < K ? 'OTM' : 'ATM';
+  document.getElementById('price-meta').textContent =
+    `${moneyness} · Intrinsic $${Math.max(type==='call'?S-K:K-S,0).toFixed(2)} · TV $${Math.max(result.price - Math.max(type==='call'?S-K:K-S,0),0).toFixed(2)}`;
+
+  // Put-call parity
+  const callP = bs(S,K,T,r,sigma,'call').price;
+  const putP  = bs(S,K,T,r,sigma,'put').price;
+  const parity = callP - putP;
+  const parityTheory = S - K*Math.exp(-r*T);
+  document.getElementById('parity-val').textContent =
+    `$${parity.toFixed(4)} (theory: $${parityTheory.toFixed(4)})`;
+
+  // Breakeven
+  const be = type === 'call' ? K + result.price : K - result.price;
+  document.getElementById('be-val').textContent = `$${be.toFixed(2)}`;
+
+  // ── GREEKS ────────────────────────────────────────
+  const gColor = (v, pos=true) => {
+    if (pos) return v > 0 ? '#00ff88' : '#ff4466';
+    return v < 0 ? '#ff4466' : '#00ff88';
+  };
+  document.getElementById('g-delta').textContent = result.delta.toFixed(4);
+  document.getElementById('g-delta').style.color = type==='call' ? '#00ff88' : '#ff4466';
+  document.getElementById('g-gamma').textContent = result.gamma.toFixed(6);
+  document.getElementById('g-gamma').style.color = '#00c8ff';
+  document.getElementById('g-vega').textContent  = result.vega.toFixed(4);
+  document.getElementById('g-vega').style.color  = '#ffaa00';
+  document.getElementById('g-theta').textContent = result.theta.toFixed(4);
+  document.getElementById('g-theta').style.color = '#ff4466';
+  document.getElementById('g-rho').textContent   = result.rho.toFixed(4);
+  document.getElementById('g-rho').style.color   = '#aa88ff';
+  document.getElementById('g-moneyness').textContent = (S/K).toFixed(4);
+  document.getElementById('g-moneyness').style.color = S>K?'#00ff88':S<K?'#ff4466':'#ffe566';
+
+  // ── CHART 1 : P&L ─────────────────────────────────
+  const spots = Array.from({length:120}, (_,i) => S*0.78 + i*(S*0.44/119));
+  const entry = result.price;
+  const pnlToday   = spots.map(sp => (bs(sp,K,T,r,sigma,type).price - entry)*100);
+  const pnlExpiry  = spots.map(sp => (bs(sp,K,Math.max(T*0.01,0.003),r,sigma,type).price - entry)*100);
+
+  pnlChart.data.labels = spots.map(s => '$'+s.toFixed(0));
+  pnlChart.data.datasets = [
+    {
+      label: 'Today', data: pnlToday,
+      borderColor: accentColor, borderWidth:2, pointRadius:0,
+      backgroundColor: 'rgba(0,255,136,0.04)', fill:true, tension:.3,
+    },
+    {
+      label: 'At Expiry', data: pnlExpiry,
+      borderColor: '#52526a', borderWidth:1.5, borderDash:[5,4],
+      pointRadius:0, fill:false, tension:.2,
+    }
+  ];
+  pnlChart.update();
+
+  // ── CHART 2 : GREEKS PROFILE ──────────────────────
+  const delta_arr = spots.map(sp => bs(sp,K,T,r,sigma,type).delta);
+  const gamma_arr = spots.map(sp => bs(sp,K,T,r,sigma,type).gamma * 100); // scale for visibility
+  const vega_arr  = spots.map(sp => bs(sp,K,T,r,sigma,type).vega);
+
+  greeksChart.data.labels = spots.map(s => '$'+s.toFixed(0));
+  greeksChart.data.datasets = [
+    { label:'Δ Delta', data:delta_arr, borderColor:'#00ff88', borderWidth:2, pointRadius:0, tension:.3 },
+    { label:'Γ×100 Gamma', data:gamma_arr, borderColor:'#00c8ff', borderWidth:1.5, pointRadius:0, tension:.3, borderDash:[3,2] },
+    { label:'ν Vega', data:vega_arr,  borderColor:'#ffaa00', borderWidth:1.5, pointRadius:0, tension:.3, borderDash:[5,3] },
+  ];
+  greeksChart.update();
+
+  // ── CHART 3 : THETA DECAY ─────────────────────────
+  const maxDays = Math.max(TDays, 30);
+  const timeArr = Array.from({length:80}, (_,i) => maxDays - i*(maxDays-1)/79);
+  const decayATM = timeArr.map(d => bs(S, K, d/365, r, sigma, type).price);
+  const decayITM = timeArr.map(d => bs(S*1.05, K, d/365, r, sigma, type).price);
+  const decayOTM = timeArr.map(d => bs(S*0.95, K, d/365, r, sigma, type).price);
+
+  decayChart.data.labels = timeArr.map(d => d.toFixed(0)+'d');
+  decayChart.data.datasets = [
+    { label:`ATM S=${S}`, data:decayATM, borderColor:accentColor, borderWidth:2, pointRadius:0, tension:.3 },
+    { label:`ITM S=${(S*1.05).toFixed(0)}`, data:decayITM, borderColor:'#00c8ff', borderWidth:1.5, borderDash:[4,3], pointRadius:0, tension:.3 },
+    { label:`OTM S=${(S*0.95).toFixed(0)}`, data:decayOTM, borderColor:'#52526a', borderWidth:1.5, borderDash:[2,3], pointRadius:0, tension:.3 },
+  ];
+  decayChart.update();
+
+  // ── CHART 4 : VOL SCENARIOS ───────────────────────
+  const sigPct = sigma * 100;
+  const sc = [
+    { vol: Math.max(sigPct-10,1)/100, color:'#00c8ff', label:`σ ${Math.max(sigPct-10,1).toFixed(0)}%` },
+    { vol: sigma,                     color: accentColor, label:`σ ${sigPct.toFixed(0)}% (current)` },
+    { vol: (sigPct+10)/100,           color:'#ffaa00', label:`σ ${(sigPct+10).toFixed(0)}%` },
+    { vol: (sigPct+20)/100,           color:'#ff44aa', label:`σ ${(sigPct+20).toFixed(0)}%` },
+  ];
+  document.getElementById('sc1-label').textContent = `σ ${Math.max(sigPct-10,1).toFixed(0)}%`;
+  document.getElementById('sc2-label').textContent = `σ ${(sigPct+10).toFixed(0)}%`;
+  document.getElementById('sc3-label').textContent = `σ ${(sigPct+20).toFixed(0)}%`;
+
+  scenChart.data.labels = spots.map(s => '$'+s.toFixed(0));
+  scenChart.data.datasets = sc.map((s,i) => ({
+    label: s.label,
+    data: spots.map(sp => bs(sp,K,T,r,s.vol,type).price),
+    borderColor: s.color,
+    borderWidth: i===1 ? 2.5 : 1.5,
+    pointRadius: 0, tension:.3,
+    borderDash: i===1 ? [] : [5,3],
+  }));
+  scenChart.update();
+}
+
+/* ══════════ TIMESTAMP ══════════════════════════════ */
+const tsEl = document.getElementById('ts');
+function tick() { tsEl.textContent = new Date().toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+tick(); setInterval(tick, 1000);
+
+/* ══════════ INIT ═══════════════════════════════════ */
+update();
+</script>
+</body>
+</html>
